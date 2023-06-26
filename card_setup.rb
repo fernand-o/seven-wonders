@@ -1,7 +1,7 @@
 require "rspec"
 
 RSpec.describe "A 7 wonders game" do
-  subject(:cards) { SevenWonders::CardSetup.new(players: players, age: age, expansions: expansions).cards }
+  subject(:cards) { SevenWonders::CardSetup.new(player_count: players, age: age, expansions: expansions).cards }
 
   let(:expansions) { [] }
 
@@ -68,8 +68,8 @@ end
 
 module SevenWonders
   class CardSetup
-    def initialize(players: 7, age: :first, expansions: [])
-      @players = players
+    def initialize(player_count: 7, age: :first, expansions: [])
+      @player_count = player_count
       @age = age
       @expansions = expansions
     end
@@ -80,36 +80,28 @@ module SevenWonders
 
     private
 
-    attr_reader :players, :age, :expansions
+    attr_reader :player_count, :age, :expansions
 
     def base_game_cards
-      BaseGame.new(players, age).cards
+      BaseGame.new(player_count, age).cards
     end
 
     def expansions_cards
       expansions.map do |expansion|
-        EXPANSIONS[expansion].new(players, age).cards
+        EXPANSIONS[expansion].new(player_count, age).cards
       end.flatten
     end
   end
 
   class Deck
-    def initialize(players, age)
-      @players = players
+    def initialize(player_count, age)
+      @player_count = player_count
       @age = age
-    end
-
-    def cards
-      base_cards + extra_cards
     end
 
     protected
 
-    attr_reader :players, :age
-
-    def extra_cards
-      []
-    end
+    attr_reader :player_count, :age
   end
 
   class BaseGame < Deck
@@ -139,12 +131,14 @@ module SevenWonders
 
     PURPLE_CARDS = 141..151
 
-    def base_cards
-      CARDS_PER_AGE_AND_PLAYER_COUNT[age][players].to_a
+    def cards
+      CARDS_PER_AGE_AND_PLAYER_COUNT[age][player_count].to_a + purple_cards
     end
 
-    def extra_cards
-      age == :third ? PURPLE_CARDS.to_a.sample(players + 2) : []
+    private
+
+    def purple_cards
+      age == :third ? PURPLE_CARDS.to_a.sample(player_count + 2) : []
     end
   end
 
@@ -155,8 +149,8 @@ module SevenWonders
       third: 182..196
     }
 
-    def base_cards
-      CARDS_PER_AGE[age].to_a.sample(players)
+    def cards
+      CARDS_PER_AGE[age].to_a.sample(player_count)
     end
   end
 
