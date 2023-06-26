@@ -35,6 +35,35 @@ RSpec.describe "A 7 wonders game" do
       end
     end
   end
+
+  context "with cities expansion" do
+    let(:expansions) { [:cities] }
+
+    context "with 7 players" do
+      let(:players) { 7 }
+
+      context 'in first age' do
+        let(:age) { :first }
+
+        it { expect(cards.size).to eq 56 }
+        it { expect((152..166).to_a).to include(*cards[49..]) }
+      end
+
+      context 'in second age' do
+        let(:age) { :second }
+
+        it { expect(cards.size).to eq 56 }
+        it { expect((167..181).to_a).to include(*cards[49..]) }
+      end
+
+      context 'in third age' do
+        let(:age) { :third }
+
+        it { expect(cards.size).to eq 56 }
+        it { expect((182..196).to_a).to include(*cards[49..]) }
+      end
+    end
+  end
 end
 
 module SevenWonders
@@ -46,12 +75,22 @@ module SevenWonders
     end
 
     def cards
-      BaseGame.new(players, age).cards
+      base_game_cards + expansions_cards
     end
 
     private
 
     attr_reader :players, :age, :expansions
+
+    def base_game_cards
+      BaseGame.new(players, age).cards
+    end
+
+    def expansions_cards
+      expansions.map do |expansion|
+        EXPANSIONS[expansion].new(players, age).cards
+      end.flatten
+    end
   end
 
   class Deck
@@ -68,8 +107,8 @@ module SevenWonders
 
     attr_reader :players, :age
 
-    def base_cards
-      self.class::CARDS_PER_AGE_AND_PLAYER_COUNT[age][players].to_a
+    def extra_cards
+      []
     end
   end
 
@@ -100,10 +139,28 @@ module SevenWonders
 
     PURPLE_CARDS = 141..151
 
+    def base_cards
+      CARDS_PER_AGE_AND_PLAYER_COUNT[age][players].to_a
+    end
+
     def extra_cards
       age == :third ? PURPLE_CARDS.to_a.sample(players + 2) : []
     end
   end
+
+  class CitiesExpansion < Deck
+    CARDS_PER_AGE = {
+      first: 152..166,
+      second: 167..181,
+      third: 182..196
+    }
+
+    def base_cards
+      CARDS_PER_AGE[age].to_a.sample(players)
+    end
+  end
+
+  EXPANSIONS = {
+    cities: CitiesExpansion
+  }
 end
-
-
