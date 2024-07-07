@@ -1,10 +1,8 @@
+class TradingPost
+  def self.discount(resource, city, trader_id, match)
+    give_discount = basic_resource?(resource) && eligible_trader?(city, trader_id, match) 
 
-class EastTradingPost
-  def self.discount(resource, city_id, trader_id, match)
-    left_id = (city_id - 1) % match.cities.size
-    trader_is_at_left = left_id == trader_id
-
-    (basic_resource?(resource) && trader_is_at_left) ? 1 : 0
+    give_discount ? 1 : 0
   end
 
   def self.basic_resource?(resource)
@@ -12,7 +10,17 @@ class EastTradingPost
   end
 end
 
-class WestTradingPost; end
+class EastTradingPost < TradingPost
+  def self.eligible_trader?(city, trader_id, match)
+    trader_id == city.right_id
+  end
+end
+
+class WestTradingPost < TradingPost
+  def self.eligible_trader?(city, trader_id, match)
+    trader_id == city.left_id
+  end
+end
 
 CARDS = {
   1 => { name: "Lumber Yard", color: :brown, produces: { wood: 1 } },
@@ -41,12 +49,13 @@ CARDS = {
   24 => { name: "Workshop", color: :green, cost: { glass: 1 } },
   25 => { name: "Apothecary", color: :green, cost: { loom: 1 } },
   26 => { name: "Scriptorium", color: :green, cost: { papyrus: 1 } },
-  27 => { name: "Observatory", color: :green, cost: { loom: 1 } }
+  27 => { name: "Observatory", color: :green, cost: { loom: 1 } },
+  28 => { name: "TESTCARD", color: :red, cost: { wood: 3, stone: 1 } },
 }
 
 WONDERS = {
-  1 => { name: "Olympia", resource: :wood },
-  2 => { name: "Giza", resource: :stone },
+  1 => { name: "Olympia", resource: :glass },
+  2 => { name: "Giza", resource: :loom },
   3 => { name: "Alexandria", resource: :clay }
 }
 
@@ -91,6 +100,7 @@ class Match
 
       @resources[index] = Hash.new(0)
       add_resource(index, city.wonder.initial_resource, 1)
+      add_resource(index, :coin, 5)
     end
   end
 
@@ -137,6 +147,7 @@ class PlayingOptions
 
   def buying_options
     missing = missing_resources
+    available_coins = match.resources[city.id][:coin]
 
     return { play_for_free: true } if missing.empty?
     # todo: buy_from_leader
@@ -160,7 +171,7 @@ class PlayingOptions
     offers_with_discount = raw_offers.map do |offer|
       new_offer = offer.dup
       discount_cards.each do |card|
-        discount = card.discount_options[:class].discount(offer[:resource], city.id, offer[:trader_id], match)
+        discount = card.discount_options[:class].discount(offer[:resource], city, offer[:trader_id], match)
 
         if discount > 0
           new_offer[:discounts] ||= []
@@ -172,14 +183,47 @@ class PlayingOptions
       new_offer
     end
 
+    possibilities = []
+    offers_with_discount.count.times do |i|
+      offers_with_discount.combination(i + 1).each do |combination|
+        miss = missing.dup
+        ignore_combination = false
+        combination_cost = 0
+
+        combination.each do |offer|
+          if miss[offer[:resource]] > 0
+            miss[offer[:resource]] -= 1
+            combination_cost += offer[:final_cost]
+
+            if combination_cost > available_coins
+              ignore_combination = true
+              break
+            end
+          else
+            # if the resource is already fulfilled, ignore the combination
+            ignore_combination = true
+            break
+          end
+        end
+
+        next if ignore_combination
+
+        if miss.values.all? { |v| v <= 0 }
+          possibilities << { combination: combination, total_cost: combination_cost }
+        end
+      end
+    end
+
     p "MISSING RESOURCES"
     p missing
     p "RAW OFFERS"
     p raw_offers
     p "OFFERS WITH DISCOUNT"
-    p offers_with_discount.uniq
+    p offers_with_discount
+    p "POSSIBILITIES"
+    p possibilities
 
-    { buy_from: offers_with_discount.uniq }
+    { buy_from: possibilities }
   end
 
   # this will generate 1 offer for each available resource form each trader
@@ -206,12 +250,12 @@ class PlayingOptions
     # (hardcoded for now)
     [
       {
-        id: 1,
-        resources: { wood: 2, stone: 1 },
+        id: 0,
+        resources: { wood: 2, glass: 1 },
       },
       {
         id: 2,
-        resources: { clay: 2, glass: 1, ore: 2 }
+        resources: { wood: 2, glass: 1, stone: 1 }
       }
     ]
   end
@@ -237,29 +281,6 @@ class City
     @left_id = left_id
     @right_id = right_id
   end
-
-  def can_play?(card, match)
-    coin_cost = 0
-
-    card.cost.all? do |resource, amount_required|
-
-      
-      p match.resources[id]
-      amount_available = match.resources[id][resource]
-      next true if amount_available >= amount_required
-      
-      shortfall = amount_required - amount_available
-      coin_cost += 2 * shortfall
-
-      left_available = match.resources[left_id][resource]
-      right_available = match.resources[right_id][resource]
-
-      p match.resources[left_id], match.resources[right_id]
-
-      total_available_from_neighbors = left_available + right_available
-      total_available_from_neighbors > shortfall
-    end && match.resources[id][:coin] >= coin_cost
-  end
 end
 
 players = [
@@ -275,13 +296,11 @@ cards = CARDS.keys.map do |id|
   Card.new(id)
 end
 
-p match.cities.first.can_play?(cards[0], match) # true
-p match.cities.first.can_play?(cards[1], match) # true
-p match.cities.first.can_play?(cards[2], match) # true
-p match.cities.first.can_play?(cards[18], match) # false # cost 1 ore
-p match.cities.first.can_play?(cards[22], match) # true # cost 1 stone
+# p PlayingOptions.new(cards[0], match.cities.first, match).call
+# p PlayingOptions.new(cards[24], match.cities.first, match).call
+# p PlayingOptions.new(cards[22], match.cities.first, match).call
+# p PlayingOptions.new(cards[17], match.cities.first, match).call
 
-p PlayingOptions.new(cards[0], match.cities.first, match).call
-p PlayingOptions.new(cards[24], match.cities.first, match).call
-p PlayingOptions.new(cards[22], match.cities.first, match).call
-p PlayingOptions.new(cards[17], match.cities.first, match).call
+
+
+p PlayingOptions.new(cards[27], match.cities[1], match).call
